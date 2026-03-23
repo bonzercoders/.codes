@@ -1,4 +1,10 @@
-import { type MouseEvent as ReactMouseEvent, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react"
 import { Plus } from "lucide-react"
 
 import micIcon from "@/assets/mic.png"
@@ -18,10 +24,9 @@ interface ChatEditorProps {
   value: string
   onChange: (value: string) => void
   onSend: () => void
-  canSend: boolean
 }
 
-export function ChatEditor({ status, value, onChange, onSend, canSend }: ChatEditorProps) {
+export function ChatEditor({ status, value, onChange, onSend }: ChatEditorProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -56,10 +61,7 @@ export function ChatEditor({ status, value, onChange, onSend, canSend }: ChatEdi
     }
 
     event.preventDefault()
-
-    if (canSend) {
-      onSend()
-    }
+    onSend()
   }
 
   return (
@@ -67,9 +69,7 @@ export function ChatEditor({ status, value, onChange, onSend, canSend }: ChatEdi
       <div className="chat-editor__input-wrap">
         <div className="chat-editor__status">
           <span className="chat-editor__status-label">{STATUS_LABEL[status]}</span>
-          <span
-            className={`chat-editor__status-dot${status === "connected" ? " is-connected" : ""}`}
-          />
+          <span className={`chat-editor__status-dot${status === "connected" ? " is-connected" : ""}`} />
         </div>
 
         <textarea
@@ -112,14 +112,10 @@ export function ChatEditor({ status, value, onChange, onSend, canSend }: ChatEdi
         </div>
 
         <div className="chat-editor__actions">
-          <button
-            aria-label="Voice input"
-            className="chat-editor__icon-button voice-button"
-            type="button"
-          >
+          <button aria-label="Voice input" className="chat-editor__icon-button voice-button" type="button">
             <img alt="" aria-hidden="true" className="chat-editor__mic-icon" src={micIcon} />
           </button>
-          <Button className="chat-editor__send-button" disabled={!canSend} onClick={onSend} type="button">
+          <Button className="chat-editor__send-button" onClick={onSend} type="button">
             Send
           </Button>
         </div>
@@ -127,4 +123,3 @@ export function ChatEditor({ status, value, onChange, onSend, canSend }: ChatEdi
     </div>
   )
 }
-

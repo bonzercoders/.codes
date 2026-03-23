@@ -1,4 +1,4 @@
-﻿# Plan: STT/LLM/TTS Client Chat
+# Plan: STT/LLM/TTS Client Chat
 
 ## Overview
 This plan builds the missing client-side voice chat runtime on top of the already-working server STT/LLM/TTS contracts. We will first formalize contracts and wire a runnable skeleton, then add event-driven chat state, microphone capture uplink, and finally streamed audio playback with speaker-order tracking for multi-character turns.
@@ -6,13 +6,13 @@ This plan builds the missing client-side voice chat runtime on top of the alread
 ## Spec Reference
 docs/specs/stt-llm-tts-client-chat.md
 
-## Status: NOT_STARTED
+## Status: COMPLETE
 
-## Current Task: 1
+## Current Task: COMPLETE
 
 ---
 
-<task id="1" status="NOT_STARTED">
+<task id="1" status="COMPLETE">
   <n>Contracts-As-Code and Runtime Skeleton</n>
   <context>
     docs/specs/stt-llm-tts-client-chat.md (Section: Existing Constraints)
@@ -48,10 +48,14 @@ docs/specs/stt-llm-tts-client-chat.md
   </done>
   <depends-on>none</depends-on>
   <log>
+    2026-03-23 12:31:33 -05:00 - Implemented Task 1 contract/stub/runtime skeleton files and Home page wiring.
+    Verification: `cd client && npm run build` passed.
+    Verification blocker: `cd client && npm run lint` fails in pre-existing files outside Task 1 scope (`components/registry/button.tsx`, `components/registry/tabs.tsx`, `components/ui/button.tsx`, `lib/websocket.ts`).
+    Marked COMPLETE by user decision to proceed to Task 2 with known baseline lint debt.
   </log>
 </task>
 
-<task id="2" status="NOT_STARTED">
+<task id="2" status="COMPLETE">
   <n>Server Event State and Timeline Rendering</n>
   <context>
     docs/specs/stt-llm-tts-client-chat.md (Section: Step 1 - New Flow B)
@@ -86,10 +90,15 @@ docs/specs/stt-llm-tts-client-chat.md
   </done>
   <depends-on>1</depends-on>
   <log>
+    2026-03-23 12:44:46 -05:00 - Implemented Task 2 reducer/event routing/timeline rendering updates.
+    Files modified: client/src/lib/chat-messages.ts, client/src/lib/chat-runtime.ts, client/src/components/chat/ChatTimeline.tsx, client/src/pages/HomePage.tsx, client/src/styles.css.
+    Verification: client build passed via npm run build.
+    Verification blocker: client lint fails on pre-existing files outside Task 2 scope (components/registry/button.tsx, components/registry/tabs.tsx, components/ui/button.tsx, lib/websocket.ts).
+    Pending manual check: live server validation for streamed text_stream_start/chunk/stop and STT UI updates.
   </log>
 </task>
 
-<task id="3" status="NOT_STARTED">
+<task id="3" status="COMPLETE">
   <n>Microphone Capture and STT Binary Uplink</n>
   <context>
     docs/specs/stt-llm-tts-client-chat.md (Section: Step 1 - New Flow A and D)
@@ -123,10 +132,15 @@ docs/specs/stt-llm-tts-client-chat.md
   </done>
   <depends-on>2</depends-on>
   <log>
+    2026-03-23 12:54:09 -05:00 - Implemented Task 3 microphone capture and STT uplink wiring (audio-capture lifecycle, runtime start/stop/listen logic, editor voice state UI props).
+    Files modified: client/src/lib/audio-capture.ts, client/src/lib/chat-runtime.ts, client/src/components/editor/ChatEditor.tsx, client/src/pages/HomePage.tsx.
+    Verification: `cd client && npm run build` passed.
+    Verification blocker: `cd client && npm run lint` fails on pre-existing files outside Task 3 scope (`components/registry/button.tsx`, `components/registry/tabs.tsx`, `components/ui/button.tsx`, `lib/websocket.ts`).
+    Pending manual check: with server running, validate mic start/stop toggles and STT update/final events from live speech.`r`n    Assumed complete by user decision to move forward without live STT validation.
   </log>
 </task>
 
-<task id="4" status="NOT_STARTED">
+<task id="4" status="COMPLETE">
   <n>PCM Streaming Playback and Voice UX Hardening</n>
   <context>
     docs/specs/stt-llm-tts-client-chat.md (Section: Step 1 - New Flow C and D)
@@ -161,5 +175,12 @@ docs/specs/stt-llm-tts-client-chat.md
   </done>
   <depends-on>3</depends-on>
   <log>
+    2026-03-23 13:25:46 -05:00 - Implemented Task 4 PCM streaming playback and voice UX hardening.
+    Files modified: client/src/lib/audio-player.ts, client/src/lib/chat-runtime.ts, client/src/lib/chat-messages.ts, client/src/components/chat/ChatTimeline.tsx, client/src/styles.css.
+    Verification: `cd client && npm run build` passed.
+    Verification baseline: `cd client && npm run lint` fails only on pre-existing files outside Task 4 scope (`components/registry/button.tsx`, `components/registry/tabs.tsx`, `components/ui/button.tsx`, `lib/websocket.ts`).
+    Pending manual check: with server running, validate audible playback for `audio_stream_start` + binary chunks + `audio_stream_stop` drain behavior.
   </log>
 </task>
+
+

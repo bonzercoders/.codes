@@ -1,4 +1,4 @@
-﻿# Project Tracker
+# Project Tracker
 
 ## Active Feature
 **Name:** stt-llm-tts-client-chat
@@ -6,24 +6,26 @@
 **Spec:** docs/specs/stt-llm-tts-client-chat.md
 
 ## Current State
-**Task:** 1 of 4
-**Task Name:** Contracts-As-Code and Runtime Skeleton
-**Status:** NOT_STARTED
+**Task:** 4 of 4
+**Task Name:** PCM Streaming Playback and Voice UX Hardening
+**Status:** COMPLETE
 **Branch:** codex/stt-llm-tts-client-chat
 
 ## What Just Happened
-Created the spec and implementation plan from docs/audit.md, including data flows, module boundaries, contracts, and build sequence.
+Implemented Task 4 playback/runtime/timeline hardening: real PCM16 audio scheduler, stream drain behavior, playback state routing into chat reducer, and speaking-status UI updates.
 
 ## What's Next
-- Task 1: Contracts-As-Code and Runtime Skeleton
-- Task 2: Server Event State and Timeline Rendering
-- Task 3: Microphone Capture and STT Binary Uplink
-- Task 4: PCM Streaming Playback and Voice UX Hardening
+- Planned implementation tasks are complete.
+- Run live server validation when available to confirm audible `audio_stream_start`/binary/`audio_stream_stop` playback end-to-end.
 
 ## Blockers
-None
+- `cd client && npm run lint` fails on pre-existing files outside current task scope:
+  - `client/src/components/registry/button.tsx`
+  - `client/src/components/registry/tabs.tsx`
+  - `client/src/components/ui/button.tsx`
+  - `client/src/lib/websocket.ts`
 
 ## Session Notes
+- Task 3 was marked complete by user decision without live STT validation.
+- Task 4 implementation verified via local client build; live server playback validation remains pending.
 - Single-user, single active audio stream invariant is intentional and required.
-- UI must still track speaker identity and sequential order across multiple character responses.
-- Server websocket contracts are treated as fixed constraints and not redesigned in this plan.

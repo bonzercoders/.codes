@@ -9,6 +9,7 @@ import { Plus } from "lucide-react"
 
 import micIcon from "@/assets/mic.png"
 import { Button } from "@/components/ui/button"
+import type { SttState } from "@/lib/chat-contracts"
 import { type ConnectionStatus } from "@/lib/websocket"
 
 const MENU_ITEMS = ["File upload", "New chat"]
@@ -19,14 +20,32 @@ const STATUS_LABEL: Record<ConnectionStatus, string> = {
   disconnected: "Disconnected",
 }
 
+const VOICE_STATE_LABEL: Record<SttState, string> = {
+  inactive: "Idle",
+  listening: "Listening",
+  recording: "Recording",
+  transcribing: "Transcribing",
+}
+
 interface ChatEditorProps {
   status: ConnectionStatus
+  sttState: SttState
   value: string
   onChange: (value: string) => void
   onSend: () => void
+  onToggleListening: () => void
+  isListeningIntent: boolean
 }
 
-export function ChatEditor({ status, value, onChange, onSend }: ChatEditorProps) {
+export function ChatEditor({
+  status,
+  sttState,
+  value,
+  onChange,
+  onSend,
+  onToggleListening,
+  isListeningIntent,
+}: ChatEditorProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
 
@@ -63,6 +82,15 @@ export function ChatEditor({ status, value, onChange, onSend }: ChatEditorProps)
     event.preventDefault()
     onSend()
   }
+
+  const isVoiceDisabled = status !== "connected"
+  const voiceStateClass = status === "connected" ? `is-${sttState}` : ""
+  const voiceLabelText =
+    status === "connected"
+      ? isListeningIntent && sttState === "inactive"
+        ? "Starting"
+        : VOICE_STATE_LABEL[sttState]
+      : "Voice Off"
 
   return (
     <div aria-label="Chat editor" className="chat-editor" role="group">
@@ -112,7 +140,17 @@ export function ChatEditor({ status, value, onChange, onSend }: ChatEditorProps)
         </div>
 
         <div className="chat-editor__actions">
-          <button aria-label="Voice input" className="chat-editor__icon-button voice-button" type="button">
+          <span className={["chat-editor__voice-label", voiceStateClass].filter(Boolean).join(" ")}>{voiceLabelText}</span>
+          <button
+            aria-label={isListeningIntent ? "Stop voice input" : "Start voice input"}
+            aria-pressed={isListeningIntent}
+            className={["chat-editor__icon-button", "voice-button", voiceStateClass, isListeningIntent ? "is-active" : ""]
+              .filter(Boolean)
+              .join(" ")}
+            disabled={isVoiceDisabled}
+            onClick={onToggleListening}
+            type="button"
+          >
             <img alt="" aria-hidden="true" className="chat-editor__mic-icon" src={micIcon} />
           </button>
           <Button className="chat-editor__send-button" onClick={onSend} type="button">

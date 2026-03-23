@@ -114,7 +114,7 @@ export function ChatEditor({ status, value, onChange, onSend, canSend }: ChatEdi
         <div className="chat-editor__actions">
           <button
             aria-label="Voice input"
-            className="chat-editor__icon-button chat-editor__icon-button--mic"
+            className="chat-editor__icon-button voice-button"
             type="button"
           >
             <img alt="" aria-hidden="true" className="chat-editor__mic-icon" src={micIcon} />

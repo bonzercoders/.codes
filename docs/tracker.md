@@ -12,11 +12,11 @@
 **Branch:** codex/stt-llm-tts-client-chat
 
 ## What Just Happened
-Implemented Task 4 playback/runtime/timeline hardening: real PCM16 audio scheduler, stream drain behavior, playback state routing into chat reducer, and speaking-status UI updates.
+Task 4 implementation was manually validated end-to-end by user: STT -> LLM -> TTS flow works, including live streamed playback from start through drain/stop.
 
 ## What's Next
 - Planned implementation tasks are complete.
-- Run live server validation when available to confirm audible `audio_stream_start`/binary/`audio_stream_stop` playback end-to-end.
+- Optional: run final code review/cleanup pass and prepare commit(s).
 
 ## Blockers
 - `cd client && npm run lint` fails on pre-existing files outside current task scope:
@@ -27,5 +27,6 @@ Implemented Task 4 playback/runtime/timeline hardening: real PCM16 audio schedul
 
 ## Session Notes
 - Task 3 was marked complete by user decision without live STT validation.
-- Task 4 implementation verified via local client build; live server playback validation remains pending.
+- Task 4 implementation verified via local client build and user-confirmed end-to-end live playback validation.
 - Single-user, single active audio stream invariant is intentional and required.
+

@@ -179,8 +179,9 @@ docs/specs/stt-llm-tts-client-chat.md
     Files modified: client/src/lib/audio-player.ts, client/src/lib/chat-runtime.ts, client/src/lib/chat-messages.ts, client/src/components/chat/ChatTimeline.tsx, client/src/styles.css.
     Verification: `cd client && npm run build` passed.
     Verification baseline: `cd client && npm run lint` fails only on pre-existing files outside Task 4 scope (`components/registry/button.tsx`, `components/registry/tabs.tsx`, `components/ui/button.tsx`, `lib/websocket.ts`).
-    Pending manual check: with server running, validate audible playback for `audio_stream_start` + binary chunks + `audio_stream_stop` drain behavior.
+    2026-03-23 13:56:25 -05:00 - User validated end-to-end on live server: STT mic toggle, streamed text flow, and audible TTS playback all functioning.
   </log>
 </task>
+
 
 

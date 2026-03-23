@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "command": "bash -c 'INPUT=$(echo \"$CLAUDE_TOOL_INPUT\" | tr \"[:upper:]\" \"[:lower:]\"); if echo \"$INPUT\" | grep -qE \"rm -rf|git push --force|git push -f|drop table|drop database|truncate table|--no-verify\"; then echo \"BLOCKED: Dangerous command detected. Use a safer alternative (e.g., git push without --force, move files to trash instead of rm -rf).\" >&2; exit 2; fi'"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "command": "bash -c 'echo \"Reminder: run tests to verify this change.\"'"
+      }
+    ]
+  }
+}

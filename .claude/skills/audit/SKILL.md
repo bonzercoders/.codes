@@ -1,7 +1,7 @@
 ---
 name: audit
 description: Audit an existing codebase to understand what's built, what's working, what's partial, and what's missing. Use BEFORE /plan when dropping into an existing project, joining a project mid-stream, or when significant work was done outside the workflow system. Produces a structured assessment that /plan uses as input.
-argument-hint: [focus area or "full"]
+argument-hint: "[focus area or 'full']"
 ---
 
 ## Codebase Audit Workflow

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class TTSSentence:
     text: str
@@ -26,11 +27,13 @@ class TTSSentence:
     character_name: str
     voice_id: str
 
+
 @dataclass
 class AudioResponseDone:
     message_id: str
     character_id: str
     character_name: str
+
 
 @dataclass
 class AudioChunk:
@@ -41,9 +44,11 @@ class AudioChunk:
     character_id: str
     character_name: str
 
+
 class TTSQueues(Protocol):
     sentence_queue: asyncio.Queue
     tts_queue: asyncio.Queue
+
 
 def revert_delay_pattern(data: torch.Tensor, start_idx: int = 0) -> torch.Tensor:
     """Undo Higgs delay pattern so decoded frames line up."""
@@ -58,6 +63,7 @@ def revert_delay_pattern(data: torch.Tensor, start_idx: int = 0) -> torch.Tensor
         out.append(data[i:(i + 1), i + start_idx:(data.shape[1] - num_codebooks + 1 + i)])
     return torch.cat(out, dim=0)
 
+
 class TTS:
     def __init__(self, queues: TTSQueues, db: "RealtimeSync"):
         self.queues = queues
@@ -67,9 +73,64 @@ class TTS:
         # Set during initialize()
         self.engine: Optional[HiggsAudioServeEngine] = None
         self.sample_rate: int = 24000
-        self.chunk_size: int = 14
+
+        # Decode schedule config
+        self.first_sentence_chunk_schedule: tuple[int, ...] = (4, 8, 16, 24)
+        self.standard_chunk_size: int = 24
+        self._validate_chunk_schedule_config()
+
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.voice_dir = os.path.join(os.path.dirname(__file__), "voices")
+
+    @staticmethod
+    def _validate_chunk_size(value: int, field_name: str) -> None:
+        if type(value) is not int:
+            raise ValueError(f"{field_name} must be an integer, got {type(value).__name__}")
+        if value < 2:
+            raise ValueError(f"{field_name} must be >= 2, got {value}")
+
+    def _validate_chunk_schedule_config(self) -> None:
+        if not self.first_sentence_chunk_schedule:
+            raise ValueError("first_sentence_chunk_schedule cannot be empty")
+
+        for index, size in enumerate(self.first_sentence_chunk_schedule):
+            self._validate_chunk_size(size, f"first_sentence_chunk_schedule[{index}]")
+
+        self._validate_chunk_size(self.standard_chunk_size, "standard_chunk_size")
+
+    def _target_chunk_size(self, sentence_index: int, emitted_chunk_count: int) -> int:
+        if sentence_index == 0 and emitted_chunk_count < len(self.first_sentence_chunk_schedule):
+            return self.first_sentence_chunk_schedule[emitted_chunk_count]
+        return self.standard_chunk_size
+
+    def _decode_audio_window(self, audio_tokens: List[torch.Tensor], start_idx: int) -> Optional[bytes]:
+        if self.engine is None:
+            raise RuntimeError("TTS engine is not initialized")
+
+        if not audio_tokens:
+            return None
+
+        audio_tensor = torch.cat(audio_tokens, dim=-1)
+
+        try:
+            # Revert delay pattern and decode
+            vq_code = revert_delay_pattern(audio_tensor, start_idx=start_idx).clip(0, 1023).to(self.device)
+            waveform = self.engine.audio_tokenizer.decode(vq_code.unsqueeze(0))[0, 0]
+
+            # Convert to numpy
+            if isinstance(waveform, torch.Tensor):
+                waveform_np = waveform.detach().cpu().numpy()
+            else:
+                waveform_np = np.asarray(waveform, dtype=np.float32)
+
+            # Convert to PCM16 bytes
+            pcm = np.clip(waveform_np, -1.0, 1.0)
+            pcm16 = (pcm * 32767.0).astype(np.int16)
+            return pcm16.tobytes()
+
+        except Exception as e:
+            logger.warning(f"Error decoding chunk (start_idx={start_idx}): {e}")
+            return None
 
     async def initialize(self):
         """Initialize the Higgs Audio engine. Called once at startup."""
@@ -109,7 +170,11 @@ class TTS:
                 chunk_index = 0
 
                 try:
-                    async for pcm_bytes in self.synthesize_speech(sentence.text, sentence.voice_id):
+                    async for pcm_bytes in self.synthesize_speech(
+                        sentence.text,
+                        sentence.voice_id,
+                        sentence.index,
+                    ):
                         await self.queues.tts_queue.put(
                             AudioChunk(
                                 audio_bytes=pcm_bytes,
@@ -171,22 +236,28 @@ class TTS:
 
         return messages
 
-    async def synthesize_speech(self, text: str, voice_id: str) -> AsyncGenerator[bytes, None]:
+    async def synthesize_speech(self, text: str, voice_id: str, sentence_index: int) -> AsyncGenerator[bytes, None]:
         """Stream PCM16 audio chunks from Higgs Audio engine."""
+        if self.engine is None:
+            raise RuntimeError("TTS engine is not initialized")
+
         if not voice_id:
             raise ValueError("Cannot synthesize speech without voice_id")
 
         selected_voice = self.db.get_voice(voice_id)
         if not selected_voice:
             raise ValueError(f"Voice '{voice_id}' not found in database")
+
         messages = await self.load_voice_reference(selected_voice)
         messages.append(Message(role="user", content=text))
 
         chat_sample = ChatMLSample(messages=messages)
 
         # Initialize streaming state
-        audio_tokens: list[torch.Tensor] = []
+        audio_tokens: List[torch.Tensor] = []
         seq_len = 0
+        pending_nonpad_tokens = 0
+        emitted_chunk_count = 0
 
         with torch.inference_mode():
             async for delta in self.engine.generate_delta_stream(
@@ -214,59 +285,31 @@ class TTS:
                 # Count non-padding tokens (1024 is padding)
                 if torch.all(delta.audio_tokens != 1024):
                     seq_len += 1
+                    pending_nonpad_tokens += 1
 
-                # Decode when chunk size reached
-                if seq_len > 0 and seq_len % self.chunk_size == 0:
-                    audio_tensor = torch.cat(audio_tokens, dim=-1)
+                if pending_nonpad_tokens <= 0:
+                    continue
 
-                    try:
-                        # Revert delay pattern and decode
-                        vq_code = (
-                            revert_delay_pattern(audio_tensor, start_idx=seq_len - self.chunk_size + 1)
-                            .clip(0, 1023)
-                            .to(self.device)
-                        )
-                        waveform = self.engine.audio_tokenizer.decode(vq_code.unsqueeze(0))[0, 0]
+                target_chunk_size = self._target_chunk_size(sentence_index, emitted_chunk_count)
+                if pending_nonpad_tokens < target_chunk_size:
+                    continue
 
-                        # Convert to numpy
-                        if isinstance(waveform, torch.Tensor):
-                            waveform_np = waveform.detach().cpu().numpy()
-                        else:
-                            waveform_np = np.asarray(waveform, dtype=np.float32)
+                start_idx = seq_len - pending_nonpad_tokens + 1
+                pcm_bytes = self._decode_audio_window(audio_tokens, start_idx=start_idx)
+                pending_nonpad_tokens = 0
 
-                        # Convert to PCM16 bytes
-                        pcm = np.clip(waveform_np, -1.0, 1.0)
-                        pcm16 = (pcm * 32767.0).astype(np.int16)
-                        yield pcm16.tobytes()
+                if pcm_bytes is None:
+                    continue
 
-                    except Exception as e:
-                        logger.warning(f"Error decoding chunk: {e}")
-                        continue
+                yield pcm_bytes
+                emitted_chunk_count += 1
 
         # Flush remaining tokens
-        if seq_len > 0 and seq_len % self.chunk_size != 0 and audio_tokens:
-            audio_tensor = torch.cat(audio_tokens, dim=-1)
-            remaining = seq_len % self.chunk_size
-
-            try:
-                vq_code = (
-                    revert_delay_pattern(audio_tensor, start_idx=seq_len - remaining + 1)
-                    .clip(0, 1023)
-                    .to(self.device)
-                )
-                waveform = self.engine.audio_tokenizer.decode(vq_code.unsqueeze(0))[0, 0]
-
-                if isinstance(waveform, torch.Tensor):
-                    waveform_np = waveform.detach().cpu().numpy()
-                else:
-                    waveform_np = np.asarray(waveform, dtype=np.float32)
-
-                pcm = np.clip(waveform_np, -1.0, 1.0)
-                pcm16 = (pcm * 32767.0).astype(np.int16)
-                yield pcm16.tobytes()
-
-            except Exception as e:
-                logger.warning(f"Error flushing remaining audio: {e}")
+        if pending_nonpad_tokens > 0 and audio_tokens:
+            start_idx = seq_len - pending_nonpad_tokens + 1
+            pcm_bytes = self._decode_audio_window(audio_tokens, start_idx=start_idx)
+            if pcm_bytes is not None:
+                yield pcm_bytes
 
     def get_available_voices(self) -> List[Dict[str, str]]:
         """Get list of available voices formatted for frontend."""

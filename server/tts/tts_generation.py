@@ -3,6 +3,7 @@ import os
 import torch
 import asyncio
 import logging
+import time
 import numpy as np
 from dataclasses import dataclass
 from typing import Callable, Optional, Dict, List, AsyncGenerator, Protocol
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
     from server.db.realtime import RealtimeSync
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 @dataclass
@@ -169,12 +171,21 @@ class TTS:
                 logger.info(f"[TTS] Generating audio for sentence {sentence.index}")
                 chunk_index = 0
 
+                ttfa_start = time.perf_counter() if sentence.index == 0 else None
+
                 try:
                     async for pcm_bytes in self.synthesize_speech(
                         sentence.text,
                         sentence.voice_id,
                         sentence.index,
                     ):
+                        if ttfa_start is not None and chunk_index == 0:
+                            ttfa_ms = (time.perf_counter() - ttfa_start) * 1000.0
+                            logger.info(
+                                f"[TTS][TTFA] {sentence.character_name}/{sentence.message_id}: {ttfa_ms:.1f} ms"
+                            )
+                            ttfa_start = None
+
                         await self.queues.tts_queue.put(
                             AudioChunk(
                                 audio_bytes=pcm_bytes,

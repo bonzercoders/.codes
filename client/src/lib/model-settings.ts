@@ -43,14 +43,6 @@ export const PARAMETER_DEFS: LlmParameterDefinition[] = [
     accent: "#38d39f",
   },
   {
-    key: "top_k",
-    label: "Top K",
-    min: 0,
-    max: 100,
-    step: 1,
-    accent: "#3fb2ff",
-  },
-  {
     key: "top_p",
     label: "Top P",
     min: 0,
@@ -65,6 +57,14 @@ export const PARAMETER_DEFS: LlmParameterDefinition[] = [
     max: 1,
     step: 0.01,
     accent: "#5e6bff",
+  },
+  {
+    key: "top_k",
+    label: "Top K",
+    min: 0,
+    max: 100,
+    step: 1,
+    accent: "#3fb2ff",
   },
   {
     key: "frequency_penalty",
@@ -94,9 +94,9 @@ export const PARAMETER_DEFS: LlmParameterDefinition[] = [
 
 const PARAMETER_MAP: Record<LlmNumericParameterKey, LlmParameterDefinition> = {
   temperature: PARAMETER_DEFS[0],
-  top_k: PARAMETER_DEFS[1],
-  top_p: PARAMETER_DEFS[2],
-  min_p: PARAMETER_DEFS[3],
+  top_p: PARAMETER_DEFS[1],
+  min_p: PARAMETER_DEFS[2],
+  top_k: PARAMETER_DEFS[3],
   frequency_penalty: PARAMETER_DEFS[4],
   presence_penalty: PARAMETER_DEFS[5],
   repetition_penalty: PARAMETER_DEFS[6],
@@ -188,3 +188,4 @@ export function saveSettings(settings: LlmSettings): void {
   const normalized = sanitizeSettings(settings)
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized))
 }
+

@@ -1,6 +1,7 @@
 import { type ComponentType, useEffect, useState } from "react"
 
 import { AppLayout } from "@/components/layout/AppLayout"
+import { ChatRuntimeProvider } from "@/lib/chat-runtime-context"
 import { type AppRoute } from "@/lib/navigation"
 import { AgentsPage } from "@/pages/AgentsPage"
 import { CharactersPage } from "@/pages/CharactersPage"
@@ -84,14 +85,16 @@ function App() {
   }
 
   return (
-    <AppLayout
-      currentRoute={currentRoute}
-      isSidebarCollapsed={isSidebarCollapsed}
-      onNavigate={handleNavigate}
-      onToggleSidebar={() => setIsSidebarCollapsed((previous) => !previous)}
-    >
-      <ActivePage />
-    </AppLayout>
+    <ChatRuntimeProvider>
+      <AppLayout
+        currentRoute={currentRoute}
+        isSidebarCollapsed={isSidebarCollapsed}
+        onNavigate={handleNavigate}
+        onToggleSidebar={() => setIsSidebarCollapsed((previous) => !previous)}
+      >
+        <ActivePage />
+      </AppLayout>
+    </ChatRuntimeProvider>
   )
 }
 

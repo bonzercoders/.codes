@@ -13,8 +13,8 @@ import type {
   UseChatRuntimeOptions,
 } from "@/lib/chat-contracts"
 import { createInitialChatRuntimeState, reduceChatRuntimeState } from "@/lib/chat-messages"
+import { getWebSocketUrl, VoiceSocket } from "@/lib/websocket"
 import type { ConnectionStatus } from "@/lib/websocket"
-import { useVoiceSocket } from "@/lib/websocket"
 
 const DEFAULT_SETTINGS_SYNC_DEBOUNCE_MS = 160
 
@@ -224,6 +224,44 @@ function toViewState(state: ChatRuntimeState, status: ConnectionStatus): ChatRun
   }
 }
 
+function resolveVoiceSocketUrl(path = "/ws"): string {
+  const configuredUrl = readConfiguredVoiceSocketUrl()
+  if (!configuredUrl) {
+    return getWebSocketUrl(path)
+  }
+
+  if (!configuredUrl.pathname || configuredUrl.pathname === "/") {
+    configuredUrl.pathname = path
+  }
+
+  return configuredUrl.toString()
+}
+
+function readConfiguredVoiceSocketUrl(): URL | null {
+  const raw = (import.meta.env.VITE_VOICE_WS_URL as string | undefined)?.trim()
+  if (!raw) {
+    return null
+  }
+
+  try {
+    const url = raw.startsWith("ws://") || raw.startsWith("wss://")
+      ? new URL(raw)
+      : new URL(raw, window.location.origin)
+
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      url.protocol = window.location.protocol === "https:" ? "wss:" : "ws:"
+    }
+
+    if (url.protocol !== "ws:" && url.protocol !== "wss:") {
+      return null
+    }
+
+    return url
+  } catch {
+    return null
+  }
+}
+
 export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewModel {
   const { modelSettings, settingsSyncDebounceMs = DEFAULT_SETTINGS_SYNC_DEBOUNCE_MS } = options
 
@@ -231,10 +269,12 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
   const [draftText, setDraftText] = useState("")
   const [isListeningIntent, setIsListeningIntent] = useState(false)
   const [lastError, setLastError] = useState<RuntimeError | null>(null)
+  const [status, setStatus] = useState<ConnectionStatus>("disconnected")
 
   const modelSettingsRef = useRef(modelSettings)
   const statusRef = useRef<ConnectionStatus>("disconnected")
   const activeAudioMessageIdRef = useRef<string | null>(null)
+  const socketRef = useRef<VoiceSocket | null>(null)
 
   const capture = useMemo(() => createAudioCaptureController(), [])
   const player = useMemo(
@@ -256,8 +296,8 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
     []
   )
 
-  const { status, socket } = useVoiceSocket({
-    onText: (payload) => {
+  const handleSocketText = useCallback(
+    (payload: Record<string, unknown>) => {
       const event = normalizeServerEvent(payload)
       if (!event) {
         setLastError({
@@ -290,7 +330,11 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
 
       setState((previous) => reduceChatRuntimeState(previous, { type: "server_event", event }))
     },
-    onBinary: (chunk) => {
+    [player]
+  )
+
+  const handleSocketBinary = useCallback(
+    (chunk: ArrayBuffer) => {
       if (!activeAudioMessageIdRef.current) {
         setLastError({
           code: "AUDIO_STREAM_CONTEXT_MISSING",
@@ -301,8 +345,24 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
 
       player.pushChunk(chunk)
     },
-  })
+    [player]
+  )
 
+  useEffect(() => {
+    const socket = new VoiceSocket({
+      url: resolveVoiceSocketUrl(),
+      onText: handleSocketText,
+      onBinary: handleSocketBinary,
+      onStatusChange: setStatus,
+    })
+
+    socketRef.current = socket
+
+    return () => {
+      socket.disconnect()
+      socketRef.current = null
+    }
+  }, [handleSocketBinary, handleSocketText])
 
   useEffect(() => {
     modelSettingsRef.current = modelSettings
@@ -330,7 +390,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
     }
 
     const timer = setTimeout(() => {
-      socket.current?.sendText(
+      socketRef.current?.sendText(
         toSocketPayload({
           type: "model_settings",
           ...modelSettingsRef.current,
@@ -341,7 +401,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
     return () => {
       clearTimeout(timer)
     }
-  }, [modelSettings, settingsSyncDebounceMs, socket, status])
+  }, [modelSettings, settingsSyncDebounceMs, status])
 
   useEffect(() => {
     return () => {
@@ -356,7 +416,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
       return
     }
 
-    socket.current?.sendText(
+    socketRef.current?.sendText(
       toSocketPayload({
         type: "user_message",
         text,
@@ -366,7 +426,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
 
     setState((previous) => reduceChatRuntimeState(previous, { type: "append_user_message", text }))
     setDraftText("")
-  }, [draftText, socket, status])
+  }, [draftText, status])
 
   const listeningIntentActive = status === "connected" && isListeningIntent
 
@@ -388,12 +448,12 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
       captureState === "stopping"
 
     if (shouldStop) {
-      socket.current?.sendText({ type: "stop_listening" })
+      socketRef.current?.sendText({ type: "stop_listening" })
       void capture.stop()
       return
     }
 
-    socket.current?.sendText({ type: "start_listening" })
+    socketRef.current?.sendText({ type: "start_listening" })
     setIsListeningIntent(true)
     setLastError(null)
 
@@ -404,7 +464,7 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
           return
         }
 
-        socket.current?.sendBinary(chunk)
+        socketRef.current?.sendBinary(chunk)
       },
       onStateChange: (nextState) => {
         if (nextState === "idle" || nextState === "error") {
@@ -418,11 +478,11 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
         })
 
         if (statusRef.current === "connected") {
-          socket.current?.sendText({ type: "stop_listening" })
+          socketRef.current?.sendText({ type: "stop_listening" })
         }
       },
     })
-  }, [capture, listeningIntentActive, socket, status])
+  }, [capture, listeningIntentActive, status])
 
   const viewState = useMemo(() => toViewState(state, status), [state, status])
 
@@ -436,8 +496,3 @@ export function useChatRuntime(options: UseChatRuntimeOptions): ChatRuntimeViewM
     lastError,
   }
 }
-
-
-
-
-

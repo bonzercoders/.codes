@@ -19,13 +19,41 @@ import { cn } from "@/lib/utils"
 
 const EDITOR_TRANSITION_MS = 220
 const EDITOR_ENTER_DELAY_MS = 18
+const MAX_VOICE_ID_RETRIES = 3
 
 type EditorMode = "create" | "edit"
 type EditorPhase = "hidden" | "entering" | "entered" | "exiting"
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message
+  }
+
+  return fallback
+}
+
+function isVoiceIdConflictError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false
+  }
+
+  const candidate = error as { code?: unknown; details?: unknown; message?: unknown }
+  const code = typeof candidate.code === "string" ? candidate.code : ""
+  const details = typeof candidate.details === "string" ? candidate.details.toLowerCase() : ""
+  const message = typeof candidate.message === "string" ? candidate.message.toLowerCase() : ""
+
+  if (code === "23505") {
+    return true
+  }
+
+  return (details.includes("voice_id") || message.includes("voice_id")) &&
+    (details.includes("duplicate") || message.includes("duplicate"))
+}
+
 export function VoicesPage() {
   const [voices, setVoices] = useState<Voice[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedVoiceId, setSelectedVoiceId] = useState<string | null>(null)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [editorMode, setEditorMode] = useState<EditorMode>("create")
@@ -36,10 +64,35 @@ export function VoicesPage() {
   const exitTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
+    let isMounted = true
+
     fetchVoices()
-      .then(setVoices)
-      .catch((error) => console.error("Failed to load voices:", error))
-      .finally(() => setIsLoading(false))
+      .then((voiceRows) => {
+        if (!isMounted) {
+          return
+        }
+
+        setVoices(voiceRows)
+        setErrorMessage(null)
+      })
+      .catch((error) => {
+        console.error("Failed to load voices:", error)
+
+        if (!isMounted) {
+          return
+        }
+
+        setErrorMessage("Failed to load voices. Please refresh and try again.")
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   useEffect(() => {
@@ -134,19 +187,43 @@ export function VoicesPage() {
     })
   }
 
+  const createVoiceWithDeterministicId = async (saveDraft: VoiceDraft): Promise<Voice> => {
+    let latestVoices = voices
+
+    for (let attempt = 0; attempt < MAX_VOICE_ID_RETRIES; attempt += 1) {
+      const nextVoiceId = createVoiceId(
+        saveDraft.voiceName,
+        latestVoices.map((voice) => voice.voiceId)
+      )
+
+      try {
+        return await insertVoice(saveDraft, nextVoiceId)
+      } catch (error) {
+        if (!isVoiceIdConflictError(error)) {
+          throw error
+        }
+
+        latestVoices = await fetchVoices()
+        setVoices(latestVoices)
+      }
+    }
+
+    throw new Error("Could not allocate a unique voice ID. Please try again.")
+  }
+
   const handleSave = async () => {
     const normalizedName = draft.voiceName.trim()
     const saveDraft = { ...draft, voiceName: normalizedName || "Untitled Voice" }
 
     try {
       if (editorMode === "create") {
-        const id = createVoiceId()
-        const created = await insertVoice(saveDraft, id)
+        const created = await createVoiceWithDeterministicId(saveDraft)
 
-        setVoices((prev) => [created, ...prev])
+        setVoices((prev) => [created, ...prev.filter((voice) => voice.voiceId !== created.voiceId)])
         setSelectedVoiceId(created.voiceId)
         setEditorMode("edit")
         setDraft(toVoiceDraft(created))
+        setErrorMessage(null)
         return
       }
 
@@ -161,8 +238,10 @@ export function VoicesPage() {
       )
 
       setDraft(toVoiceDraft(updated))
+      setErrorMessage(null)
     } catch (error) {
       console.error("Failed to save voice:", error)
+      setErrorMessage(getErrorMessage(error, "Could not save this voice. Please try again."))
     }
   }
 
@@ -175,6 +254,7 @@ export function VoicesPage() {
       await deleteVoice(selectedVoiceId)
 
       setVoices((prev) => prev.filter((voice) => voice.voiceId !== selectedVoiceId))
+      setErrorMessage(null)
 
       unmountEditorWithPop(() => {
         setSelectedVoiceId(null)
@@ -183,6 +263,7 @@ export function VoicesPage() {
       })
     } catch (error) {
       console.error("Failed to delete voice:", error)
+      setErrorMessage(getErrorMessage(error, "Could not delete this voice. Please try again."))
     }
   }
 
@@ -208,6 +289,21 @@ export function VoicesPage() {
 
   return (
     <div className="page-canvas voices-page">
+      {errorMessage ? (
+        <div
+          role="alert"
+          style={{
+            border: "1px solid rgba(246, 90, 87, 0.45)",
+            borderRadius: "10px",
+            color: "#f7b4b3",
+            marginBottom: "12px",
+            padding: "10px 12px",
+          }}
+        >
+          {errorMessage}
+        </div>
+      ) : null}
+
       <div className="voices-page__split-shell">
         <VoiceDirectory
           onCreate={openCreateEditor}

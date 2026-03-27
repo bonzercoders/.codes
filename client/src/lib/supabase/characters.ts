@@ -84,6 +84,21 @@ export async function updateCharacter(id: string, draft: CharacterDraft): Promis
   return fromDbRow(data as DbCharacterRow)
 }
 
+export async function setCharacterActiveState(id: string, isActive: boolean): Promise<Character> {
+  const { data, error } = await supabase
+    .from("characters")
+    .update({ is_active: isActive })
+    .eq("id", id)
+    .select()
+    .single()
+
+  if (error) {
+    throw error
+  }
+
+  return fromDbRow(data as DbCharacterRow)
+}
+
 export async function deleteCharacter(id: string): Promise<void> {
   const { error } = await supabase
     .from("characters")

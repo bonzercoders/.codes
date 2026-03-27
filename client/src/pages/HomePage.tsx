@@ -1,29 +1,13 @@
-import { useCallback, useState } from "react"
+import { useState } from "react"
 
 import { ChatTimeline } from "@/components/chat/ChatTimeline"
 import { HomeInfoDrawer } from "@/components/drawer/HomeInfoDrawer"
 import { ChatEditor } from "@/components/editor/ChatEditor"
-import { useChatRuntime } from "@/lib/chat-runtime"
-import { type LlmSettings, loadSettings, sanitizeSettings, saveSettings } from "@/lib/model-settings"
-
-const MODEL_SETTINGS_DEBOUNCE_MS = 160
+import { useChatRuntimeContext } from "@/lib/chat-runtime-context"
 
 export function HomePage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
-  const [settings, setSettings] = useState<LlmSettings>(() => loadSettings())
-
-  const runtime = useChatRuntime({
-    modelSettings: settings,
-    settingsSyncDebounceMs: MODEL_SETTINGS_DEBOUNCE_MS,
-  })
-
-  const handleSettingsChange = useCallback((partial: Partial<LlmSettings>) => {
-    setSettings((previous) => {
-      const next = sanitizeSettings({ ...previous, ...partial })
-      saveSettings(next)
-      return next
-    })
-  }, [])
+  const { runtime, settings, updateSettings } = useChatRuntimeContext()
 
   return (
     <div className="page-canvas home-page">
@@ -31,7 +15,7 @@ export function HomePage() {
         <div className="home-page__column home-page__column--left">
           <HomeInfoDrawer
             isOpen={isDrawerOpen}
-            onSettingsChange={handleSettingsChange}
+            onSettingsChange={updateSettings}
             onToggle={() => setIsDrawerOpen((previous) => !previous)}
             settings={settings}
           />

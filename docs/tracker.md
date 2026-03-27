@@ -1,32 +1,34 @@
 # Project Tracker
 
 ## Active Feature
-**Name:** stt-llm-tts-client-chat
-**Plan:** docs/plans/stt-llm-tts-client-chat.md
-**Spec:** docs/specs/stt-llm-tts-client-chat.md
+**Name:** character-voice-runtime-integration
+**Plan:** docs/plans/character-voice-runtime-integration.md
+**Spec:** docs/specs/character-voice-runtime-integration.md
 
 ## Current State
 **Task:** 4 of 4
-**Task Name:** PCM Streaming Playback and Voice UX Hardening
-**Status:** COMPLETE
-**Branch:** codex/stt-llm-tts-client-chat
+**Task Name:** Realtime Sync Observability and No-Restart Validation
+**Status:** NOT_STARTED
+**Branch:** codex/character-voice-runtime-integration
 
 ## What Just Happened
-Task 4 implementation was manually validated end-to-end by user: STT -> LLM -> TTS flow works, including live streamed playback from start through drain/stop.
+Completed Task 3: Deterministic Voice ID Generation in Voice Create Flow.
+Voice creation now generates `voice_id` values using normalized base + 3-digit suffix (for example `amy-voice-001`, `amy-voice-002`) instead of UUIDs.
+Create flow now retries on duplicate-key conflicts with refreshed voice rows, while edit flow keeps `voice_id` immutable.
 
 ## What's Next
-- Planned implementation tasks are complete.
-- Optional: run final code review/cleanup pass and prepare commit(s).
+- Task 4: Realtime Sync Observability and No-Restart Validation
 
 ## Blockers
-- `cd client && npm run lint` fails on pre-existing files outside current task scope:
-  - `client/src/components/registry/button.tsx`
-  - `client/src/components/registry/tabs.tsx`
-  - `client/src/components/ui/button.tsx`
-  - `client/src/lib/websocket.ts`
+None
 
 ## Session Notes
-- Task 3 was marked complete by user decision without live STT validation.
-- Task 4 implementation verified via local client build and user-confirmed end-to-end live playback validation.
-- Single-user, single active audio stream invariant is intentional and required.
-
+- Updated: character chat toggling is multi-active; toggling one character does not deactivate others.
+- Updated: voice ID normalization is hyphenated and suffixed (example: `amy-voice-001`).
+- Task 1 decision: runtime/socket ownership moved to app-level provider (`ChatRuntimeProvider`) and Home now consumes shared runtime context.
+- Task 1 decision: websocket URL now supports optional `VITE_VOICE_WS_URL` override with fallback behavior.
+- Task 2 decision: Characters page now loads voice options from Supabase and editor voice selection displays `voice_name` while storing `voice_id`.
+- Task 2 decision: missing/deleted voice selections fall back to empty dropdown display and are sanitized to empty `voice_id` on save.
+- Task 3 decision: deterministic `voice_id` generation now uses normalized name base + first free suffix from `001` to `999`; if all suffixes are used, create returns an explicit error.
+- Task 3 decision: create flow retries after duplicate `voice_id` conflicts by refreshing voices before recomputing the next suffix.
+- Current lint failures in registry/ui/websocket files are known baseline debt.

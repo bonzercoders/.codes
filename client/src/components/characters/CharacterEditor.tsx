@@ -1,12 +1,17 @@
 import { ChevronDown, MessageCircle, UserRound, X } from "lucide-react"
-import { type ChangeEvent, useState } from "react"
+import { type ChangeEvent, useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
-import { CHARACTER_TAB_VALUES, type CharacterDraft, type CharacterTab } from "@/lib/characters"
+import {
+  CHARACTER_TAB_VALUES,
+  type CharacterDraft,
+  type CharacterTab,
+  type CharacterVoiceOption,
+} from "@/lib/characters"
 import { cn } from "@/lib/utils"
 
 type CharacterEditorMode = "create" | "edit"
@@ -14,7 +19,9 @@ type CharacterEditorMode = "create" | "edit"
 interface CharacterEditorProps {
   mode: CharacterEditorMode
   draft: CharacterDraft
+  voiceOptions: CharacterVoiceOption[]
   activeTab: CharacterTab
+  isChatActive: boolean
   onChange: (changes: Partial<CharacterDraft>) => void
   onTabChange: (tab: CharacterTab) => void
   onChat: () => void
@@ -39,7 +46,9 @@ function isCharacterTab(value: string): value is CharacterTab {
 export function CharacterEditor({
   mode,
   draft,
+  voiceOptions,
   activeTab,
+  isChatActive,
   onChange,
   onTabChange,
   onChat,
@@ -51,6 +60,14 @@ export function CharacterEditor({
   const [isGlobalPromptOpen, setIsGlobalPromptOpen] = useState(true)
   const displayName = draft.name.trim() || "Character name"
   const isDeleteEnabled = mode === "edit"
+
+  const hasSelectedVoice = useMemo(
+    () => voiceOptions.some((option) => option.value === draft.voiceId),
+    [draft.voiceId, voiceOptions]
+  )
+
+  const isVoiceSelectionMissing = draft.voiceId.trim() !== "" && !hasSelectedVoice
+  const voiceSelectionValue = isVoiceSelectionMissing ? "" : draft.voiceId
 
   const handleImageSelection = (event: ChangeEvent<HTMLInputElement>) => {
     const nextFile = event.target.files?.[0]
@@ -159,15 +176,26 @@ export function CharacterEditor({
 
               <div className="character-editor__field-block character-editor__field-block--narrow">
                 <Label className="character-editor__label" htmlFor="character-editor-voice">
-                  Voice ID
+                  Voice
                 </Label>
-                <Input
-                  className="character-editor__input"
+                <select
+                  className="character-editor__input character-editor__select"
                   id="character-editor-voice"
                   onChange={(event) => onChange({ voiceId: event.target.value })}
-                  placeholder="Enter voice ID"
-                  value={draft.voiceId}
-                />
+                  value={voiceSelectionValue}
+                >
+                  <option value="">Select a voice</option>
+                  {voiceOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                {isVoiceSelectionMissing ? (
+                  <p style={{ margin: 0, color: "#f4a6a3", fontSize: "0.82rem" }}>
+                    The current voice no longer exists. Please choose another voice.
+                  </p>
+                ) : null}
               </div>
 
               <div className="character-editor__field-block character-editor__field-block--wide character-editor__field-block--stretch">
@@ -201,9 +229,14 @@ export function CharacterEditor({
         </Button>
 
         <div className="character-editor__footer-actions">
-          <Button className="character-editor__chat" onClick={onChat} type="button" variant="secondary">
+          <Button
+            className="character-editor__chat"
+            onClick={onChat}
+            type="button"
+            variant={isChatActive ? "primary" : "secondary"}
+          >
             <MessageCircle size={15} />
-            Chat
+            {isChatActive ? "Chat On" : "Chat"}
           </Button>
           <Button className="character-editor__save" onClick={onSave} type="button">
             Save

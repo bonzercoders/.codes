@@ -157,6 +157,7 @@ export function CharacterDirectory({ characters, selectedId, onSelect, onCreate,
                     <div className="character-directory__letter-items">
                       {entries.map((character) => {
                         const isSelected = character.id === selectedId
+                        const isChatActive = character.isActive
                         const promptPreview = getPromptPreview(character)
 
                         return (
@@ -196,7 +197,7 @@ export function CharacterDirectory({ characters, selectedId, onSelect, onCreate,
                               <Button
                                 className={cn(
                                   "character-directory__chat-button",
-                                  isSelected && "is-active"
+                                  isChatActive && "is-active"
                                 )}
                                 onClick={(event) => {
                                   event.stopPropagation()

@@ -6,6 +6,7 @@ import {
   type Character,
   type CharacterDraft,
   type CharacterTab,
+  type CharacterVoiceOption,
   createCharacterId,
   createEmptyCharacterDraft,
   toCharacterDraft,
@@ -14,8 +15,10 @@ import {
   deleteCharacter,
   fetchCharacters,
   insertCharacter,
+  setCharacterActiveState,
   updateCharacter,
 } from "@/lib/supabase/characters"
+import { fetchVoices } from "@/lib/supabase/voices"
 import { cn } from "@/lib/utils"
 
 const EDITOR_TRANSITION_MS = 220
@@ -24,9 +27,20 @@ const EDITOR_ENTER_DELAY_MS = 18
 type EditorMode = "create" | "edit"
 type EditorPhase = "hidden" | "entering" | "entered" | "exiting"
 
+function toVoiceOptions(voices: Awaited<ReturnType<typeof fetchVoices>>): CharacterVoiceOption[] {
+  return voices
+    .map((voice) => ({
+      value: voice.voiceId,
+      label: voice.voiceName.trim() || voice.voiceId,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label))
+}
+
 export function CharactersPage() {
   const [characters, setCharacters] = useState<Character[]>([])
+  const [voiceOptions, setVoiceOptions] = useState<CharacterVoiceOption[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null)
   const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [editorMode, setEditorMode] = useState<EditorMode>("create")
@@ -42,11 +56,42 @@ export function CharactersPage() {
     [characters, selectedCharacterId]
   )
 
+  const voiceOptionValues = useMemo(
+    () => new Set(voiceOptions.map((option) => option.value)),
+    [voiceOptions]
+  )
+
   useEffect(() => {
-    fetchCharacters()
-      .then(setCharacters)
-      .catch((error) => console.error("Failed to load characters:", error))
-      .finally(() => setIsLoading(false))
+    let isMounted = true
+
+    Promise.all([fetchCharacters(), fetchVoices()])
+      .then(([characterRows, voiceRows]) => {
+        if (!isMounted) {
+          return
+        }
+
+        setCharacters(characterRows)
+        setVoiceOptions(toVoiceOptions(voiceRows))
+        setErrorMessage(null)
+      })
+      .catch((error) => {
+        console.error("Failed to load characters page data:", error)
+
+        if (!isMounted) {
+          return
+        }
+
+        setErrorMessage("Failed to load characters or voices. Please refresh and try again.")
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
   }, [])
 
   useEffect(() => {
@@ -152,9 +197,42 @@ export function CharactersPage() {
     })
   }
 
+  const updateCharacterCollection = (updatedCharacter: Character) => {
+    setCharacters((previousCharacters) =>
+      previousCharacters.map((character) => (character.id === updatedCharacter.id ? updatedCharacter : character))
+    )
+
+    if (selectedCharacterId === updatedCharacter.id) {
+      setDraft(toCharacterDraft(updatedCharacter))
+    }
+  }
+
+  const toggleCharacterChatState = async (characterId: string) => {
+    const targetCharacter = characters.find((character) => character.id === characterId)
+
+    if (!targetCharacter) {
+      return
+    }
+
+    try {
+      const updatedCharacter = await setCharacterActiveState(characterId, !targetCharacter.isActive)
+
+      updateCharacterCollection(updatedCharacter)
+      setErrorMessage(null)
+    } catch (error) {
+      console.error("Failed to toggle character chat state:", error)
+      setErrorMessage("Could not update chat status for this character. Please try again.")
+    }
+  }
+
   const handleSave = async () => {
     const normalizedName = draft.name.trim()
-    const saveDraft = { ...draft, name: normalizedName || "Untitled" }
+    const hasValidVoiceSelection = draft.voiceId === "" || voiceOptionValues.has(draft.voiceId)
+    const saveDraft = {
+      ...draft,
+      name: normalizedName || "Untitled",
+      voiceId: hasValidVoiceSelection ? draft.voiceId : "",
+    }
 
     try {
       if (editorMode === "create") {
@@ -165,6 +243,7 @@ export function CharactersPage() {
         setSelectedCharacterId(created.id)
         setEditorMode("edit")
         setDraft(toCharacterDraft(created))
+        setErrorMessage(null)
         return
       }
 
@@ -174,13 +253,11 @@ export function CharactersPage() {
 
       const updated = await updateCharacter(selectedCharacterId, saveDraft)
 
-      setCharacters((prev) =>
-        prev.map((character) => (character.id === selectedCharacterId ? updated : character))
-      )
-
-      setDraft(toCharacterDraft(updated))
+      updateCharacterCollection(updated)
+      setErrorMessage(null)
     } catch (error) {
       console.error("Failed to save character:", error)
+      setErrorMessage("Could not save this character. Please try again.")
     }
   }
 
@@ -196,6 +273,8 @@ export function CharactersPage() {
         prev.filter((character) => character.id !== selectedCharacterId)
       )
 
+      setErrorMessage(null)
+
       unmountEditorWithPop(() => {
         setSelectedCharacterId(null)
         setEditorMode("create")
@@ -204,12 +283,21 @@ export function CharactersPage() {
       })
     } catch (error) {
       console.error("Failed to delete character:", error)
+      setErrorMessage("Could not delete this character. Please try again.")
     }
   }
 
   const handleDirectoryChat = (characterId: string) => {
-    // Placeholder action by design.
-    void characterId
+    void toggleCharacterChatState(characterId)
+  }
+
+  const handleEditorChat = () => {
+    if (editorMode !== "edit" || !selectedCharacterId) {
+      setErrorMessage("Save this character first, then enable chat.")
+      return
+    }
+
+    void toggleCharacterChatState(selectedCharacterId)
   }
 
   const handleImageUpload = (file: File) => {
@@ -248,6 +336,21 @@ export function CharactersPage() {
 
   return (
     <div className="page-canvas characters-page">
+      {errorMessage ? (
+        <div
+          role="alert"
+          style={{
+            border: "1px solid rgba(246, 90, 87, 0.45)",
+            borderRadius: "10px",
+            color: "#f7b4b3",
+            marginBottom: "12px",
+            padding: "10px 12px",
+          }}
+        >
+          {errorMessage}
+        </div>
+      ) : null}
+
       <div className="characters-page__split-shell">
         <CharacterDirectory
           characters={characters}
@@ -262,14 +365,16 @@ export function CharactersPage() {
             <CharacterEditor
               activeTab={activeTab}
               draft={draft}
+              isChatActive={selectedCharacter?.isActive ?? false}
               mode={editorMode}
               onChange={(changes) => setDraft((previousDraft) => ({ ...previousDraft, ...changes }))}
-              onChat={() => setActiveTab("chats")}
+              onChat={handleEditorChat}
               onClose={closeEditor}
               onDelete={handleDelete}
               onImageUpload={handleImageUpload}
               onSave={handleSave}
               onTabChange={setActiveTab}
+              voiceOptions={voiceOptions}
             />
           </div>
         ) : (

@@ -19,6 +19,11 @@ export interface Character {
   updatedAt: string
 }
 
+export interface CharacterVoiceOption {
+  value: string
+  label: string
+}
+
 export type CharacterDraft = Omit<Character, "id" | "createdAt" | "updatedAt">
 
 export const CHARACTER_TAB_LABELS: Record<CharacterTab, string> = {
